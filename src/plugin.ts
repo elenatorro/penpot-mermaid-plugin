@@ -1,5 +1,6 @@
 import type { Board, Shape } from '@penpot/plugin-types';
 import {
+  ANCHOR_FILL,
   DATA_KEY,
   type Diagram,
   type DiagramSettings,
@@ -59,8 +60,21 @@ function createText(board: Board, t: DiagramText) {
   if (t.fontStyle === 'italic') text.fontStyle = 'italic';
   text.fills = [{ fillColor: t.color, fillOpacity: t.opacity }];
   text.align = t.align;
-  text.x = board.x + t.x;
-  text.y = board.y + t.y;
+
+  // A fixed box over the container lets Penpot centre the text both ways.
+  const box = t.container;
+  if (box) {
+    const width = Math.max(box.width, t.width + 8);
+    text.growType = 'fixed';
+    text.align = 'center';
+    text.verticalAlign = 'center';
+    text.resize(width, box.height);
+    text.x = board.x + box.x + (box.width - width) / 2;
+    text.y = board.y + box.y;
+  } else {
+    text.x = board.x + t.x;
+    text.y = board.y + t.y;
+  }
 }
 
 function descendants(shape: Shape): Shape[] {
@@ -110,10 +124,20 @@ function buildDiagram(diagram: Diagram, settings: DiagramSettings): Board {
 
   board.appendChild(group);
   group.name = 'Shapes';
-  group.x = board.x + diagram.content.x;
-  group.y = board.y + diagram.content.y;
-
+  // The anchor rect marks the diagram origin. Shadows can grow the group past
+  // it, so align the anchor itself with the board.
+  const anchor =
+    descendants(group).find(
+      (c) => c.fills !== 'mixed' && c.fills.some((f) => f.fillColor?.toLowerCase() === ANCHOR_FILL),
+    ) ??
+    group.children.find(
+      (c) => c.parentIndex === 0 && Math.abs(c.width - diagram.width) < 1 && Math.abs(c.height - diagram.height) < 1,
+    );
+  if (!anchor) console.warn('[mermaid] anchor rect not found; labels and arrows may be offset');
+  group.x += board.x - (anchor?.x ?? group.x);
+  group.y += board.y - (anchor?.y ?? group.y);
   applyCaps(group, diagram.caps, { x: board.x, y: board.y });
+  anchor?.remove();
 
   for (const t of diagram.texts) createText(board, t);
 

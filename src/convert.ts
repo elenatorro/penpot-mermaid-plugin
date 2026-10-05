@@ -1,4 +1,4 @@
-import { type Cap, type Diagram, type DiagramText, type PathCaps, type Point } from './model';
+import { ANCHOR_FILL, type Box, type Cap, type Diagram, type DiagramText, type PathCaps, type Point } from './model';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -262,6 +262,33 @@ function anchorToAlign(anchor: string): DiagramText['align'] {
   return 'left';
 }
 
+const center = (b: Box) => ({ x: b.x + b.width / 2, y: b.y + b.height / 2 });
+const contains = (b: Box, p: { x: number; y: number }) =>
+  p.x > b.x && p.x < b.x + b.width && p.y > b.y && p.y < b.y + b.height;
+const area = (b: Box) => b.width * b.height;
+
+// A text's container is the smallest filled shape around its centre that holds
+// no smaller shape and no other text, so clusters and class boxes are skipped.
+// Only texts Mermaid already centred there are kept, so titles stay at the top.
+function assignContainers(svg: SVGSVGElement, texts: DiagramText[]) {
+  const boxes = Array.from(svg.querySelectorAll<SVGGraphicsElement>('rect, circle, ellipse, polygon, path'))
+    .filter((el) => !el.closest('defs') && (el.getAttribute('fill') ?? 'none') !== 'none')
+    .map((el) => rootBounds(svg, el))
+    .filter((b) => b.width >= 1 && b.height >= 1)
+    .map(({ x, y, width, height }) => ({ x, y, width, height }));
+  const leaves = boxes.filter((b) => !boxes.some((o) => o !== b && area(o) < area(b) && contains(b, center(o))));
+
+  for (const t of texts) {
+    const c = center(t);
+    const container = leaves
+      .filter((b) => contains(b, c) && texts.filter((o) => contains(b, center(o))).length === 1)
+      .sort((a, b) => area(a) - area(b))[0];
+    if (!container) continue;
+    const cc = center(container);
+    if (Math.abs(cc.x - c.x) <= 2 && Math.abs(cc.y - c.y) <= 2) t.container = container;
+  }
+}
+
 // Text becomes native Penpot text, so pull it out of the SVG.
 function extractTexts(svg: SVGSVGElement): DiagramText[] {
   const texts: DiagramText[] = [];
@@ -284,6 +311,7 @@ function extractTexts(svg: SVGSVGElement): DiagramText[] {
     }
   }
 
+  assignContainers(svg, texts);
   svg.querySelectorAll('text, foreignObject').forEach((n) => n.remove());
   return texts;
 }
@@ -313,7 +341,11 @@ export function convertSvg(svgString: string, host: HTMLElement, background: str
     inlineStyles(svg);
     const offset = (p: Point): Point => ({ x: p.x - vb.x, y: p.y - vb.y });
     const caps = extractCaps(svg).map((c) => ({ ...c, from: offset(c.from), to: offset(c.to) }));
-    const texts = extractTexts(svg).map((t) => ({ ...t, x: t.x - vb.x, y: t.y - vb.y }));
+    const texts = extractTexts(svg).map((t) => ({
+      ...t,
+      ...offset(t),
+      ...(t.container && { container: { ...t.container, ...offset(t.container) } }),
+    }));
 
     svg.querySelectorAll('style').forEach((s) => s.remove());
     for (const el of [svg, ...Array.from(svg.querySelectorAll('[class],[style]'))]) {
@@ -321,10 +353,17 @@ export function convertSvg(svgString: string, host: HTMLElement, background: str
       el.removeAttribute('style');
     }
 
-    // Penpot sizes the imported group to its shapes' geometry, as getBBox does.
-    const content = offset(svg.getBBox());
+    // Spans the viewBox and marks the diagram origin; the plugin finds it by
+    // its fill, aligns the group to it and removes it.
+    const anchor = document.createElementNS(SVG_NS, 'rect');
+    anchor.setAttribute('x', String(vb.x));
+    anchor.setAttribute('y', String(vb.y));
+    anchor.setAttribute('width', String(width));
+    anchor.setAttribute('height', String(height));
+    anchor.setAttribute('fill', ANCHOR_FILL);
+    svg.insertBefore(anchor, svg.firstChild);
 
-    return { svg: new XMLSerializer().serializeToString(svg), background, content, width, height, texts, caps };
+    return { svg: new XMLSerializer().serializeToString(svg), background, width, height, texts, caps };
   } finally {
     host.innerHTML = '';
   }
