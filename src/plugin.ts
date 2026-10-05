@@ -13,7 +13,8 @@ import {
 // Without it `appendChild` puts children at the bottom. Not in plugin-types 1.4.
 (penpot as typeof penpot & { flags: { naturalChildOrdering: boolean } }).flags.naturalChildOrdering = true;
 
-penpot.ui.open('Mermaid', `?theme=${penpot.theme}`, { width: 420, height: 640 });
+// Penpot adds the current theme to the UI URL itself.
+penpot.ui.open('Mermaid', '', { width: 420, height: 640 });
 
 function send(message: PluginMessage) {
   penpot.ui.sendMessage(message);
@@ -32,6 +33,12 @@ function readSettings(shape: Shape): DiagramSettings | null {
 function selectedDiagram(): Shape | null {
   const [shape] = penpot.selection;
   return penpot.selection.length === 1 && shape && readSettings(shape) ? shape : null;
+}
+
+// Page background is not in plugin-types 1.4; Penpot falls back to the default canvas colour.
+function sendCanvas() {
+  const page = penpot.currentPage as (typeof penpot.currentPage & { background?: string }) | null;
+  if (page?.background) send({ type: 'canvas', background: page.background });
 }
 
 function sendSelection() {
@@ -98,29 +105,15 @@ function buildDiagram(diagram: Diagram, settings: DiagramSettings): Board {
   const board = penpot.createBoard();
   board.name = 'Mermaid diagram';
   board.clipContent = false;
-  board.fills = [];
+  board.fills = settings.background ? [{ fillColor: diagram.background }] : [];
   board.resize(diagram.width, diagram.height);
 
   board.appendChild(group);
   group.name = 'Shapes';
-  group.x = board.x;
-  group.y = board.y;
+  group.x = board.x + diagram.content.x;
+  group.y = board.y + diagram.content.y;
 
-  // The background rect spans the viewBox, so it marks the SVG origin. It is
-  // the SVG's first element, so fall back to the bottom rect if sizes drift.
-  const rects = group.children.filter((c) => c.type === 'rectangle');
-  const background =
-    rects.find((c) => Math.abs(c.width - diagram.width) < 1 && Math.abs(c.height - diagram.height) < 1) ??
-    rects.find((c) => c.parentIndex === 0);
-  const origin = background ? { x: background.x, y: background.y } : { x: group.x, y: group.y };
-  applyCaps(group, diagram.caps, origin);
-
-  if (background) {
-    if (settings.background) {
-      board.fills = background.fills;
-    }
-    background.remove();
-  }
+  applyCaps(group, diagram.caps, { x: board.x, y: board.y });
 
   for (const t of diagram.texts) createText(board, t);
 
@@ -152,6 +145,7 @@ function insert(diagram: Diagram, settings: DiagramSettings, replace: boolean) {
 penpot.ui.onMessage<UIMessage>((msg) => {
   switch (msg.type) {
     case 'ready':
+      sendCanvas();
       sendSelection();
       break;
     case 'insert':
@@ -165,5 +159,9 @@ penpot.ui.onMessage<UIMessage>((msg) => {
   }
 });
 
-penpot.on('selectionchange', sendSelection);
+penpot.on('selectionchange', () => {
+  sendCanvas();
+  sendSelection();
+});
+penpot.on('pagechange', sendCanvas);
 penpot.on('themechange', (theme) => send({ type: 'theme', theme }));

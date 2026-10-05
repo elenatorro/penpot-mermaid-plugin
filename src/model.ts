@@ -31,6 +31,9 @@ export interface PathCaps {
 
 export interface Diagram {
   svg: string;
+  background: string;
+  // Top-left of the drawn shapes inside the diagram, where Penpot puts the imported group.
+  content: Point;
   width: number;
   height: number;
   texts: DiagramText[];
@@ -41,6 +44,7 @@ export interface DiagramSettings {
   source: string;
   theme: MermaidTheme;
   background: boolean;
+  shadows: boolean;
 }
 
 export type UIMessage =
@@ -49,6 +53,7 @@ export type UIMessage =
 
 export type PluginMessage =
   | { type: 'theme'; theme: string }
+  | { type: 'canvas'; background: string }
   | { type: 'selection'; settings: DiagramSettings | null }
   | { type: 'inserted' }
   | { type: 'error'; message: string };

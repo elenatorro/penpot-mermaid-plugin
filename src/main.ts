@@ -25,6 +25,7 @@ const sourceEl = $<HTMLTextAreaElement>('source');
 const highlightEl = $<HTMLPreElement>('highlight');
 const themeEl = $<HTMLSelectElement>('theme');
 const backgroundEl = $<HTMLInputElement>('background');
+const shadowsEl = $<HTMLInputElement>('shadows');
 const previewEl = $<HTMLDivElement>('preview');
 const errorEl = $<HTMLParagraphElement>('error');
 const insertEl = $<HTMLButtonElement>('insert');
@@ -43,6 +44,7 @@ function settings(): DiagramSettings {
     source: sourceEl.value,
     theme: themeEl.value as MermaidTheme,
     background: backgroundEl.checked,
+    shadows: shadowsEl.checked,
   };
 }
 
@@ -74,7 +76,7 @@ function setError(message: string | null) {
 }
 
 async function render() {
-  const { source, theme } = settings();
+  const { source, theme, shadows } = settings();
   const id = ++renderCount;
   mermaid.initialize({
     startOnLoad: false,
@@ -82,7 +84,7 @@ async function render() {
     theme,
     htmlLabels: false,
     fontFamily: FONT_FAMILY,
-    themeVariables: { fontFamily: FONT_FAMILY },
+    themeVariables: { fontFamily: FONT_FAMILY, ...(!shadows && { dropShadow: 'none' }) },
   });
   try {
     const { svg } = await mermaid.render(`mermaid-${id}`, source);
@@ -124,12 +126,16 @@ window.addEventListener('message', (event: MessageEvent<PluginMessage>) => {
     case 'theme':
       applyTheme(msg.theme);
       break;
+    case 'canvas':
+      previewEl.style.setProperty('--canvas-background', msg.background);
+      break;
     case 'selection':
       updateEl.hidden = !msg.settings;
       if (msg.settings) {
         setSource(msg.settings.source);
         themeEl.value = msg.settings.theme;
         backgroundEl.checked = msg.settings.background;
+        shadowsEl.checked = msg.settings.shadows ?? false;
         syncPreviewBackground();
         render();
       }
@@ -153,10 +159,13 @@ themeEl.addEventListener('change', () => {
   render();
 });
 backgroundEl.addEventListener('change', syncPreviewBackground);
+shadowsEl.addEventListener('change', render);
 insertEl.addEventListener('click', () => submit(false));
 updateEl.addEventListener('click', () => submit(true));
 
-applyTheme(new URLSearchParams(location.search).get('theme') ?? 'light');
+// Manifest v2 UIs get their query in the hash (`#/?theme=dark`).
+const params = new URLSearchParams(location.hash.split('?')[1] ?? location.search);
+applyTheme(params.get('theme') ?? 'dark');
 setSource(EXAMPLE);
 syncPreviewBackground();
 

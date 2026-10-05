@@ -130,6 +130,13 @@ textarea.code::selection {
       repeating-conic-gradient(var(--background-tertiary) 0 25%, var(--background-secondary) 0 50%) 0 0 / 16px 16px);
 }
 
+/* In dark mode, transparency shows over Penpot's canvas colour for contrast. */
+[data-theme=dark] .preview {
+  background: var(--diagram-background,
+      repeating-conic-gradient(rgb(128 128 128 / 20%) 0 25%, transparent 0 50%) 0 0 / 16px 16px,
+      var(--canvas-background, var(--background-secondary)));
+}
+
 .preview svg {
   max-width: 100%;
   max-height: 100%;

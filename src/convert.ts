@@ -47,7 +47,42 @@ function stripPx(value: string) {
   return value.replace(/px/g, '');
 }
 
+// Penpot imports SVG filters with feDropShadow as shadows, but not the CSS
+// drop-shadow() Mermaid uses, so each one becomes a shared <filter>.
+function shadowFilter(svg: SVGSVGElement, value: string, cache: Map<string, string>): string | null {
+  if (value.startsWith('url(')) return value;
+  if (!value.startsWith('drop-shadow(')) return null;
+  const cached = cache.get(value);
+  if (cached) return cached;
+
+  const color = parseColor(value) ?? { hex: '#000000', alpha: 1 };
+  const [dx = 0, dy = 0, blur = 0] = Array.from(value.matchAll(/(-?[\d.]+)px/g), (m) => parseFloat(m[1]));
+  const id = `shadow-${cache.size}`;
+
+  const filter = document.createElementNS(SVG_NS, 'filter');
+  filter.id = id;
+  for (const [k, v] of Object.entries({ x: '-50%', y: '-50%', width: '200%', height: '200%' })) filter.setAttribute(k, v);
+  const shadow = document.createElementNS(SVG_NS, 'feDropShadow');
+  for (const [k, v] of Object.entries({
+    dx,
+    dy,
+    stdDeviation: blur / 2,
+    'flood-color': color.hex,
+    'flood-opacity': color.alpha,
+  })) shadow.setAttribute(k, String(v));
+  filter.appendChild(shadow);
+
+  let defs = svg.querySelector(':scope > defs');
+  if (!defs) defs = svg.insertBefore(document.createElementNS(SVG_NS, 'defs'), svg.firstChild);
+  defs.appendChild(filter);
+
+  const url = `url(#${id})`;
+  cache.set(value, url);
+  return url;
+}
+
 function inlineStyles(svg: SVGSVGElement) {
+  const filters = new Map<string, string>();
   for (const el of Array.from(svg.querySelectorAll('*'))) {
     const tag = el.tagName.toLowerCase();
     if (!GEOMETRY_TAGS.has(tag)) continue;
@@ -60,6 +95,8 @@ function inlineStyles(svg: SVGSVGElement) {
       if (value && value !== 'none' && value !== 'normal') el.setAttribute(prop, stripPx(value));
     }
     if (cs.opacity !== '1') el.setAttribute('opacity', cs.opacity);
+    const filter = cs.filter !== 'none' && shadowFilter(svg, cs.filter, filters);
+    if (filter) el.setAttribute('filter', filter);
     for (const prop of MARKER_PROPS) {
       const value = cs.getPropertyValue(prop);
       if (value && value !== 'none') el.setAttribute(prop, value);
@@ -284,17 +321,10 @@ export function convertSvg(svgString: string, host: HTMLElement, background: str
       el.removeAttribute('style');
     }
 
-    // Anchors the imported group to the viewBox origin so text offsets line up.
-    // The plugin finds it again by its size, since Penpot drops ids on import.
-    const bg = document.createElementNS(SVG_NS, 'rect');
-    bg.setAttribute('x', String(vb.x));
-    bg.setAttribute('y', String(vb.y));
-    bg.setAttribute('width', String(width));
-    bg.setAttribute('height', String(height));
-    bg.setAttribute('fill', background);
-    svg.insertBefore(bg, svg.firstChild);
+    // Penpot sizes the imported group to its shapes' geometry, as getBBox does.
+    const content = offset(svg.getBBox());
 
-    return { svg: new XMLSerializer().serializeToString(svg), width, height, texts, caps };
+    return { svg: new XMLSerializer().serializeToString(svg), background, content, width, height, texts, caps };
   } finally {
     host.innerHTML = '';
   }
