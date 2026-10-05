@@ -3,6 +3,7 @@ import '@fontsource/source-sans-pro/700.css';
 import './style.css';
 import mermaid from 'mermaid';
 import { convertSvg } from './convert';
+import { highlight } from './highlight';
 import { FONT_FAMILY, type DiagramSettings, type MermaidTheme, type PluginMessage, type UIMessage } from './model';
 
 const EXAMPLE = `flowchart TD
@@ -21,6 +22,7 @@ const BACKGROUNDS: Record<MermaidTheme, string> = {
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const sourceEl = $<HTMLTextAreaElement>('source');
+const highlightEl = $<HTMLPreElement>('highlight');
 const themeEl = $<HTMLSelectElement>('theme');
 const backgroundEl = $<HTMLInputElement>('background');
 const previewEl = $<HTMLDivElement>('preview');
@@ -42,6 +44,26 @@ function settings(): DiagramSettings {
     theme: themeEl.value as MermaidTheme,
     background: backgroundEl.checked,
   };
+}
+
+function setSource(source: string) {
+  sourceEl.value = source;
+  syncHighlight();
+}
+
+function syncHighlight() {
+  highlightEl.innerHTML = highlight(sourceEl.value);
+  syncScroll();
+}
+
+function syncScroll() {
+  highlightEl.scrollTop = sourceEl.scrollTop;
+  highlightEl.scrollLeft = sourceEl.scrollLeft;
+}
+
+function syncPreviewBackground() {
+  const color = backgroundEl.checked ? BACKGROUNDS[themeEl.value as MermaidTheme] : null;
+  previewEl.style.setProperty('--diagram-background', color);
 }
 
 function setError(message: string | null) {
@@ -105,9 +127,10 @@ window.addEventListener('message', (event: MessageEvent<PluginMessage>) => {
     case 'selection':
       updateEl.hidden = !msg.settings;
       if (msg.settings) {
-        sourceEl.value = msg.settings.source;
+        setSource(msg.settings.source);
         themeEl.value = msg.settings.theme;
         backgroundEl.checked = msg.settings.background;
+        syncPreviewBackground();
         render();
       }
       break;
@@ -120,13 +143,22 @@ window.addEventListener('message', (event: MessageEvent<PluginMessage>) => {
   }
 });
 
-sourceEl.addEventListener('input', scheduleRender);
-themeEl.addEventListener('change', render);
+sourceEl.addEventListener('input', () => {
+  syncHighlight();
+  scheduleRender();
+});
+sourceEl.addEventListener('scroll', syncScroll);
+themeEl.addEventListener('change', () => {
+  syncPreviewBackground();
+  render();
+});
+backgroundEl.addEventListener('change', syncPreviewBackground);
 insertEl.addEventListener('click', () => submit(false));
 updateEl.addEventListener('click', () => submit(true));
 
 applyTheme(new URLSearchParams(location.search).get('theme') ?? 'light');
-sourceEl.value = EXAMPLE;
+setSource(EXAMPLE);
+syncPreviewBackground();
 
 Promise.all([
   document.fonts.load(`400 16px ${FONT_FAMILY}`),

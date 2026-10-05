@@ -9,7 +9,10 @@
     <main class="app">
       <label class="field">
         <span class="body-s">Mermaid code</span>
-        <textarea id="source" class="input code" spellcheck="false"></textarea>
+        <div class="input editor">
+          <pre id="highlight" class="code" aria-hidden="true"></pre>
+          <textarea id="source" class="code" spellcheck="false"></textarea>
+        </div>
       </label>
 
       <div class="row">

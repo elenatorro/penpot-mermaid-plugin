@@ -40,16 +40,83 @@ body {
   padding-bottom: 8px;
 }
 
+/* The textarea's text is transparent; the highlighted <pre> behind it shows. */
+.editor {
+  position: relative;
+  height: 180px;
+  min-height: 80px;
+  padding: 0;
+  resize: vertical;
+  overflow: hidden;
+}
+
+.editor:focus-within {
+  border-color: var(--accent-primary);
+}
+
 .code {
+  position: absolute;
+  inset: 0;
   box-sizing: border-box;
   width: 100%;
-  height: 180px;
-  resize: vertical;
+  height: 100%;
+  margin: 0;
+  padding: 8px;
+  border: 0;
+  outline: none;
+  overflow: auto;
+  scrollbar-gutter: stable;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 12px;
   line-height: 1.5;
+  tab-size: 4;
+  background: transparent;
+  color: var(--foreground-primary);
 }
 
+pre.code {
+  overflow: hidden;
+  pointer-events: none;
+}
+
+textarea.code {
+  resize: none;
+  color: transparent;
+  caret-color: var(--foreground-primary);
+}
+
+textarea.code::selection {
+  color: transparent;
+  background: var(--accent-primary-muted);
+}
+
+.tok-keyword {
+  color: var(--accent-secondary);
+}
+
+.tok-string {
+  color: var(--accent-tertiary);
+}
+
+.tok-arrow {
+  color: var(--accent-primary);
+}
+
+.tok-number {
+  color: var(--warning-500);
+}
+
+.tok-comment {
+  color: var(--foreground-secondary);
+}
+
+.tok-punct {
+  color: var(--foreground-secondary);
+}
+
+/* Shows the diagram on the background it will get in Penpot. */
 .preview {
   flex: 1;
   min-height: 120px;
@@ -57,8 +124,10 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+  border: 1px solid var(--background-quaternary);
   border-radius: 8px;
-  background: var(--background-secondary);
+  background: var(--diagram-background,
+      repeating-conic-gradient(var(--background-tertiary) 0 25%, var(--background-secondary) 0 50%) 0 0 / 16px 16px);
 }
 
 .preview svg {
