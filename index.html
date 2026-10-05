@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mermaid</title>
+  </head>
+  <body>
+    <main class="app">
+      <label class="field">
+        <span class="body-s">Mermaid code</span>
+        <textarea id="source" class="input code" spellcheck="false"></textarea>
+      </label>
+
+      <div class="row">
+        <label class="field grow">
+          <span class="body-s">Theme</span>
+          <select id="theme" class="select">
+            <option value="default">Default</option>
+            <option value="neutral">Neutral</option>
+            <option value="forest">Forest</option>
+            <option value="dark">Dark</option>
+            <option value="base">Base</option>
+          </select>
+        </label>
+        <label class="checkbox body-s">
+          <input id="background" type="checkbox" checked />
+          Background
+        </label>
+      </div>
+
+      <div id="preview" class="preview"></div>
+      <p id="error" class="error body-s" hidden></p>
+
+      <div class="row actions">
+        <button id="insert" type="button" data-appearance="primary">Insert</button>
+        <button id="update" type="button" data-appearance="secondary" hidden>Update selected</button>
+      </div>
+    </main>
+    <div id="measure" aria-hidden="true"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
