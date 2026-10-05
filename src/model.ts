@@ -19,8 +19,10 @@ export interface DiagramText {
   color: string;
   opacity: number;
   align: 'left' | 'center' | 'right';
-  // The node or label box the text belongs to; the text is centred on it.
+  // The node or label box the text belongs to; the text is centred across it,
+  // and also vertically when `middle` is set.
   container?: Box;
+  middle?: boolean;
 }
 
 export type Cap = 'line-arrow' | 'triangle-arrow' | 'square-marker' | 'circle-marker' | 'diamond-marker';
@@ -30,12 +32,16 @@ export interface Point {
   y: number;
 }
 
+export type Dash = 'dashed' | 'dotted';
+
 // Penpot strips ids on SVG import, so edges are matched by their end points.
 export interface PathCaps {
   from: Point;
   to: Point;
   start?: Cap;
   end?: Cap;
+  // Penpot ignores stroke-dasharray on import, so dashes become a stroke style.
+  dash?: Dash;
 }
 
 export interface Diagram {

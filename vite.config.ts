@@ -1,6 +1,8 @@
 import { defineConfig } from 'vite';
 
 export default defineConfig({
+  // Relative asset URLs, so the plugin also works when hosted under a subpath.
+  base: './',
   build: {
     emptyOutDir: false,
     // Mermaid lazy-loads big diagram engines (elk, cytoscape, katex).

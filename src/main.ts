@@ -121,6 +121,7 @@ function applyTheme(theme: string) {
 }
 
 window.addEventListener('message', (event: MessageEvent<PluginMessage>) => {
+  if (event.source !== window.parent) return;
   const msg = event.data;
   switch (msg.type) {
     case 'theme':

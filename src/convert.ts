@@ -1,4 +1,4 @@
-import { ANCHOR_FILL, type Box, type Cap, type Diagram, type DiagramText, type PathCaps, type Point } from './model';
+import { ANCHOR_FILL, type Box, type Cap, type Dash, type Diagram, type DiagramText, type PathCaps, type Point } from './model';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -133,7 +133,7 @@ const CAP_PATTERNS: [RegExp, Cap][] = [
   [/composition|aggregation/i, 'diamond-marker'],
   [/cross/i, 'square-marker'],
   [/dependency|open|async|stick/i, 'line-arrow'],
-  [/point|arrow|head|extension/i, 'triangle-arrow'],
+  [/point|arrow|head|extension|barb/i, 'triangle-arrow'],
 ];
 
 function markerCap(marker: Element): Cap | undefined {
@@ -192,6 +192,69 @@ function extendPath(el: Element, marker: Element, atStart: boolean) {
 
 // Penpot draws arrowheads as stroke caps, so markers turn into cap names
 // keyed by the path's end points in root coordinates.
+// Markers with no Penpot cap (e.g. ER crow's feet) are copied onto the path
+// end as plain shapes, placed the way the browser draws the marker.
+function flattenMarker(el: SVGGeometryElement, marker: Element, atStart: boolean) {
+  const num = (name: string, fallback: number) => parseFloat(marker.getAttribute(name) ?? '') || fallback;
+  const length = el.getTotalLength();
+  const step = Math.min(0.5, length / 2);
+  const p = el.getPointAtLength(atStart ? 0 : length);
+  const q = el.getPointAtLength(atStart ? step : length - step);
+  const forward = atStart ? Math.atan2(q.y - p.y, q.x - p.x) : Math.atan2(p.y - q.y, p.x - q.x);
+
+  const orient = marker.getAttribute('orient') ?? '0';
+  let angle = orient.startsWith('auto') ? (forward * 180) / Math.PI : parseFloat(orient) || 0;
+  if (atStart && orient === 'auto-start-reverse') angle += 180;
+
+  const strokeWidth = parseFloat(el.getAttribute('stroke-width') ?? '1') || 1;
+  const units = marker.getAttribute('markerUnits') === 'userSpaceOnUse' ? 1 : strokeWidth;
+  let scale = units;
+  const viewBox = marker.getAttribute('viewBox')?.split(/[\s,]+/).map(Number);
+  if (viewBox && viewBox[2] > 0 && viewBox[3] > 0) {
+    scale = units * Math.min(num('markerWidth', 3) / viewBox[2], num('markerHeight', 3) / viewBox[3]);
+  }
+  const [refX, refY] = [num('refX', 0), num('refY', 0)];
+
+  const g = document.createElementNS(SVG_NS, 'g');
+  g.setAttribute(
+    'transform',
+    `translate(${p.x} ${p.y}) rotate(${angle}) scale(${scale}) translate(${-refX} ${-refY})`,
+  );
+  for (const child of Array.from(marker.children)) g.appendChild(child.cloneNode(true));
+  el.after(g);
+}
+
+// Mermaid draws a state diagram's start as a filled circle node. Penpot has a
+// circle cap, so the circle goes and its outgoing edges start at its centre.
+function startStatesToCaps(svg: SVGSVGElement) {
+  for (const circle of Array.from(svg.querySelectorAll<SVGGraphicsElement>('circle.state-start'))) {
+    const b = rootBounds(svg, circle);
+    const c = new DOMPoint(b.x + b.width / 2, b.y + b.height / 2);
+    const reach = b.width / 2 + 3;
+
+    for (const el of Array.from(svg.querySelectorAll<SVGPathElement>('.edgePaths path, .edges path'))) {
+      const m = toRootMatrix(svg, el);
+      const start = new DOMPoint(el.getPointAtLength(0).x, el.getPointAtLength(0).y).matrixTransform(m);
+      if (Math.hypot(start.x - c.x, start.y - c.y) > reach) continue;
+      const local = c.matrixTransform(m.inverse());
+      const d = el.getAttribute('d') ?? '';
+      el.setAttribute('d', `M ${local.x} ${local.y} L ${d.replace(/^\s*M/, '')}`);
+      el.setAttribute('data-start-cap', 'circle-marker');
+    }
+    (circle.closest('.node') ?? circle).remove();
+  }
+}
+
+// Mermaid's dotted (`..`, `-.->`) links draw 2px dashes and its dashed ones
+// (`-->>`, requirement links) longer ones; solid edges get zero-gap arrays.
+function dashStyle(el: Element): Dash | undefined {
+  if (el.getAttribute('class')?.match(/edge-pattern-(\w+)/)?.[1] === 'solid') return undefined;
+  const values = (el.getAttribute('stroke-dasharray') ?? '').split(/[\s,]+/).map(parseFloat);
+  const i = values.findIndex((v, j) => j % 2 === 0 && v > 0);
+  if (i < 0 || !(values[i + 1] > 0)) return undefined;
+  return values[i] <= 2 ? 'dotted' : 'dashed';
+}
+
 function extractCaps(svg: SVGSVGElement): PathCaps[] {
   const markerFor = (value: string | null) => {
     const id = value?.match(/url\(["']?#([^"')]+)["']?\)/)?.[1];
@@ -199,22 +262,38 @@ function extractCaps(svg: SVGSVGElement): PathCaps[] {
   };
   const caps: PathCaps[] = [];
 
-  for (const el of Array.from(svg.querySelectorAll('[marker-start],[marker-end]'))) {
+  const edges = Array.from(svg.querySelectorAll('path, line, polyline')).filter(
+    (el) =>
+      !el.closest('defs, marker') &&
+      (el.tagName === 'line' ||
+        el.getAttribute('fill') === 'none' ||
+        MARKER_PROPS.some((prop) => el.hasAttribute(prop)) ||
+        el.hasAttribute('data-start-cap')),
+  );
+  for (const el of edges) {
     const startMarker = markerFor(el.getAttribute('marker-start'));
     const endMarker = markerFor(el.getAttribute('marker-end'));
-    const start = startMarker ? markerCap(startMarker) : undefined;
+    const start =
+      (startMarker ? markerCap(startMarker) : undefined) ??
+      ((el.getAttribute('data-start-cap') as Cap | null) || undefined);
     const end = endMarker ? markerCap(endMarker) : undefined;
-    if (start) extendPath(el, startMarker!, true);
+    if (start && startMarker) extendPath(el, startMarker, true);
     if (end) extendPath(el, endMarker!, false);
+    if (el instanceof SVGGeometryElement) {
+      if (startMarker && !start) flattenMarker(el, startMarker, true);
+      if (endMarker && !end) flattenMarker(el, endMarker, false);
+    }
+    el.removeAttribute('data-start-cap');
 
-    if ((start || end) && el instanceof SVGGeometryElement) {
+    const dash = dashStyle(el);
+    if ((start || end || dash) && el instanceof SVGGeometryElement) {
       const m = toRootMatrix(svg, el);
       const length = el.getTotalLength();
       // Chromium returns a legacy SVGPoint, whose matrixTransform rejects DOMMatrix.
       const toRoot = ({ x, y }: DOMPointReadOnly) => new DOMPoint(x, y).matrixTransform(m);
       const from = toRoot(el.getPointAtLength(0));
       const to = toRoot(el.getPointAtLength(length));
-      caps.push({ from: { x: from.x, y: from.y }, to: { x: to.x, y: to.y }, start, end });
+      caps.push({ from: { x: from.x, y: from.y }, to: { x: to.x, y: to.y }, start, end, dash });
     }
     for (const prop of MARKER_PROPS) el.removeAttribute(prop);
   }
@@ -269,7 +348,8 @@ const area = (b: Box) => b.width * b.height;
 
 // A text's container is the smallest filled shape around its centre that holds
 // no smaller shape and no other text, so clusters and class boxes are skipped.
-// Only texts Mermaid already centred there are kept, so titles stay at the top.
+// Texts are centred across it; vertically only if Mermaid centred them, so
+// titles at the top of a box stay there.
 function assignContainers(svg: SVGSVGElement, texts: DiagramText[]) {
   const boxes = Array.from(svg.querySelectorAll<SVGGraphicsElement>('rect, circle, ellipse, polygon, path'))
     .filter((el) => !el.closest('defs') && (el.getAttribute('fill') ?? 'none') !== 'none')
@@ -284,8 +364,8 @@ function assignContainers(svg: SVGSVGElement, texts: DiagramText[]) {
       .filter((b) => contains(b, c) && texts.filter((o) => contains(b, center(o))).length === 1)
       .sort((a, b) => area(a) - area(b))[0];
     if (!container) continue;
-    const cc = center(container);
-    if (Math.abs(cc.x - c.x) <= 2 && Math.abs(cc.y - c.y) <= 2) t.container = container;
+    t.container = container;
+    t.middle = Math.abs(center(container).y - c.y) <= 2;
   }
 }
 
@@ -322,6 +402,13 @@ function removeHidden(svg: SVGSVGElement) {
     const cs = getComputedStyle(el);
     if (cs.display === 'none' || cs.visibility === 'hidden') el.remove();
   }
+  // Mermaid leaves unsized label rects; browsers skip them but Penpot imports
+  // them as tiny rects.
+  for (const el of Array.from(svg.querySelectorAll<SVGGraphicsElement>('rect, circle, ellipse'))) {
+    if (el.closest('defs, marker')) continue;
+    const box = el.getBBox();
+    if (box.width === 0 || box.height === 0) el.remove();
+  }
 }
 
 export function convertSvg(svgString: string, host: HTMLElement, background: string): Diagram {
@@ -339,6 +426,7 @@ export function convertSvg(svgString: string, host: HTMLElement, background: str
   try {
     removeHidden(svg);
     inlineStyles(svg);
+    startStatesToCaps(svg);
     const offset = (p: Point): Point => ({ x: p.x - vb.x, y: p.y - vb.y });
     const caps = extractCaps(svg).map((c) => ({ ...c, from: offset(c.from), to: offset(c.to) }));
     const texts = extractTexts(svg).map((t) => ({

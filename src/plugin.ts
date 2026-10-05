@@ -61,16 +61,16 @@ function createText(board: Board, t: DiagramText) {
   text.fills = [{ fillColor: t.color, fillOpacity: t.opacity }];
   text.align = t.align;
 
-  // A fixed box over the container lets Penpot centre the text both ways.
+  // A fixed box across the container lets Penpot centre the text in it.
   const box = t.container;
   if (box) {
     const width = Math.max(box.width, t.width + 8);
     text.growType = 'fixed';
     text.align = 'center';
-    text.verticalAlign = 'center';
-    text.resize(width, box.height);
+    text.verticalAlign = t.middle ? 'center' : 'top';
+    text.resize(width, t.middle ? box.height : t.height);
     text.x = board.x + box.x + (box.width - width) / 2;
-    text.y = board.y + box.y;
+    text.y = board.y + (t.middle ? box.y : t.y);
   } else {
     text.x = board.x + t.x;
     text.y = board.y + t.y;
@@ -108,6 +108,7 @@ function applyCaps(group: Shape, caps: PathCaps[], origin: Point) {
       ...stroke,
       ...(start && { strokeCapStart: start }),
       ...(end && { strokeCapEnd: end }),
+      ...(cap.dash && { strokeStyle: cap.dash }),
     }));
   }
 }
