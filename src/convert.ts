@@ -173,8 +173,10 @@ function extractCaps(svg: SVGSVGElement): PathCaps[] {
     if ((start || end) && el instanceof SVGGeometryElement) {
       const m = toRootMatrix(svg, el);
       const length = el.getTotalLength();
-      const from = el.getPointAtLength(0).matrixTransform(m);
-      const to = el.getPointAtLength(length).matrixTransform(m);
+      // Chromium returns a legacy SVGPoint, whose matrixTransform rejects DOMMatrix.
+      const toRoot = ({ x, y }: DOMPointReadOnly) => new DOMPoint(x, y).matrixTransform(m);
+      const from = toRoot(el.getPointAtLength(0));
+      const to = toRoot(el.getPointAtLength(length));
       caps.push({ from: { x: from.x, y: from.y }, to: { x: to.x, y: to.y }, start, end });
     }
     for (const prop of MARKER_PROPS) el.removeAttribute(prop);

@@ -106,15 +106,17 @@ function buildDiagram(diagram: Diagram, settings: DiagramSettings): Board {
   group.x = board.x;
   group.y = board.y;
 
-  // The background rect spans the viewBox, so it marks the SVG origin.
-  const background = descendants(group).find(
-    (c) => c.type === 'rectangle' && Math.abs(c.width - diagram.width) < 1 && Math.abs(c.height - diagram.height) < 1,
-  );
+  // The background rect spans the viewBox, so it marks the SVG origin. It is
+  // the SVG's first element, so fall back to the bottom rect if sizes drift.
+  const rects = group.children.filter((c) => c.type === 'rectangle');
+  const background =
+    rects.find((c) => Math.abs(c.width - diagram.width) < 1 && Math.abs(c.height - diagram.height) < 1) ??
+    rects.find((c) => c.parentIndex === 0);
   const origin = background ? { x: background.x, y: background.y } : { x: group.x, y: group.y };
   applyCaps(group, diagram.caps, origin);
 
   if (background) {
-    if (settings.background && background.fills !== 'mixed') {
+    if (settings.background) {
       board.fills = background.fills;
     }
     background.remove();
