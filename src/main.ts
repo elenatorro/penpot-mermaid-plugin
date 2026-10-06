@@ -4,13 +4,8 @@ import './style.css';
 import mermaid from 'mermaid';
 import { convertSvg } from './convert';
 import { highlight } from './highlight';
+import { EXAMPLES } from './examples';
 import { FONT_FAMILY, type DiagramSettings, type MermaidTheme, type PluginMessage, type UIMessage } from './model';
-
-const EXAMPLE = `flowchart TD
-    A[Start] --> B{Is it working?}
-    B -- Yes --> C[Ship it]
-    B -- No --> D[Debug]
-    D --> B`;
 
 const BACKGROUNDS: Record<MermaidTheme, string> = {
   default: '#ffffff',
@@ -21,6 +16,7 @@ const BACKGROUNDS: Record<MermaidTheme, string> = {
 };
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
+const exampleEl = $<HTMLSelectElement>('example');
 const sourceEl = $<HTMLTextAreaElement>('source');
 const highlightEl = $<HTMLPreElement>('highlight');
 const themeEl = $<HTMLSelectElement>('theme');
@@ -51,6 +47,16 @@ function settings(): DiagramSettings {
 function setSource(source: string) {
   sourceEl.value = source;
   syncHighlight();
+  syncExample();
+}
+
+function fillExamples() {
+  exampleEl.add(new Option('Custom', ''));
+  for (const { id, label } of EXAMPLES) exampleEl.add(new Option(label, id));
+}
+
+function syncExample() {
+  exampleEl.value = EXAMPLES.find((it) => it.source === sourceEl.value)?.id ?? '';
 }
 
 function syncHighlight() {
@@ -87,7 +93,7 @@ async function render() {
     themeVariables: { fontFamily: FONT_FAMILY, ...(!shadows && { dropShadow: 'none' }) },
   });
   try {
-    const { svg } = await mermaid.render(`mermaid-${id}`, source);
+    const svg = inheritLabelFonts((await mermaid.render(`mermaid-${id}`, source)).svg);
     if (id !== renderCount) return;
     lastSvg = svg;
     previewEl.innerHTML = svg;
@@ -97,6 +103,12 @@ async function render() {
     lastSvg = null;
     setError(e instanceof Error ? e.message : String(e));
   }
+}
+
+// Mermaid writes `font-weight="normal"` / `font-style="normal"` on every label
+// tspan, which hides the bold/italic set by `style` or `classDef`.
+function inheritLabelFonts(svg: string) {
+  return svg.replace(/<tspan\b[^>]*>/g, (tag) => tag.replace(/ font-(?:weight|style)="normal"/g, ''));
 }
 
 let timer: number | undefined;
@@ -150,8 +162,15 @@ window.addEventListener('message', (event: MessageEvent<PluginMessage>) => {
   }
 });
 
+exampleEl.addEventListener('change', () => {
+  const example = EXAMPLES.find((it) => it.id === exampleEl.value);
+  if (!example) return;
+  setSource(example.source);
+  render();
+});
 sourceEl.addEventListener('input', () => {
   syncHighlight();
+  syncExample();
   scheduleRender();
 });
 sourceEl.addEventListener('scroll', syncScroll);
@@ -167,7 +186,8 @@ updateEl.addEventListener('click', () => submit(true));
 // Manifest v2 UIs get their query in the hash (`#/?theme=dark`).
 const params = new URLSearchParams(location.hash.split('?')[1] ?? location.search);
 applyTheme(params.get('theme') ?? 'dark');
-setSource(EXAMPLE);
+fillExamples();
+setSource(EXAMPLES[0].source);
 syncPreviewBackground();
 
 Promise.all([
