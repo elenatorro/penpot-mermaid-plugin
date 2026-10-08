@@ -19,6 +19,8 @@ export interface DiagramText {
   color: string;
   opacity: number;
   align: 'left' | 'center' | 'right';
+  // Degrees, clockwise; x/y/width/height describe the unrotated text.
+  rotation?: number;
   // The node or label box the text belongs to; the text is centred across it,
   // and also vertically when `middle` is set.
   container?: Box;

@@ -320,12 +320,24 @@ function readText(svg: SVGSVGElement, el: SVGGraphicsElement, lines: string[], a
   const color = parseColor(cs.fill) ?? parseColor(cs.color) ?? { hex: '#000000', alpha: 1 };
   const weight = parseInt(cs.fontWeight, 10);
 
+  // Rotated labels (e.g. vertical axis titles) keep their unrotated size
+  // around the same centre; the plugin turns the Penpot text afterwards.
+  const m = toRootMatrix(svg, el);
+  const rotation = Math.round((Math.atan2(m.b, m.a) * 180) / Math.PI);
+  let box: Box = bounds;
+  if (rotation !== 0) {
+    const local = el.getBBox();
+    const [width, height] = [local.width * bounds.scale, local.height * bounds.scale];
+    box = { x: bounds.x + (bounds.width - width) / 2, y: bounds.y + (bounds.height - height) / 2, width, height };
+  }
+
   return {
     lines,
-    x: bounds.x,
-    y: bounds.y,
-    width: bounds.width,
-    height: bounds.height,
+    x: box.x,
+    y: box.y,
+    width: box.width,
+    height: box.height,
+    ...(rotation !== 0 && { rotation }),
     fontSize: Math.round(parseFloat(cs.fontSize) * bounds.scale * 100) / 100,
     fontWeight: String(Number.isNaN(weight) ? 400 : weight),
     fontStyle: cs.fontStyle === 'italic' ? 'italic' : 'normal',
@@ -359,6 +371,7 @@ function assignContainers(svg: SVGSVGElement, texts: DiagramText[]) {
   const leaves = boxes.filter((b) => !boxes.some((o) => o !== b && area(o) < area(b) && contains(b, center(o))));
 
   for (const t of texts) {
+    if (t.rotation) continue;
     const c = center(t);
     const container = leaves
       .filter((b) => contains(b, c) && texts.filter((o) => contains(b, center(o))).length === 1)
@@ -401,6 +414,10 @@ function removeHidden(svg: SVGSVGElement) {
     if (el.closest('defs')) continue;
     const cs = getComputedStyle(el);
     if (cs.display === 'none' || cs.visibility === 'hidden') el.remove();
+  }
+  // A <switch> draws only its first child; Firefox still measures the rest.
+  for (const sw of Array.from(svg.querySelectorAll('switch'))) {
+    for (const child of Array.from(sw.children).slice(1)) child.remove();
   }
   // Mermaid leaves unsized label rects; browsers skip them but Penpot imports
   // them as tiny rects.

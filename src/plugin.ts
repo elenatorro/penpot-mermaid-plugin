@@ -71,6 +71,13 @@ function createText(board: Board, t: DiagramText) {
     text.resize(width, t.middle ? box.height : t.height);
     text.x = board.x + box.x + (box.width - width) / 2;
     text.y = board.y + (t.middle ? box.y : t.y);
+  } else if (t.rotation) {
+    const width = t.width + 8;
+    text.growType = 'fixed';
+    text.resize(width, t.height);
+    text.x = board.x + t.x - 4;
+    text.y = board.y + t.y;
+    text.rotate(t.rotation);
   } else {
     text.x = board.x + t.x;
     text.y = board.y + t.y;
