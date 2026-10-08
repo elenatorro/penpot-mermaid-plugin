@@ -1,7 +1,6 @@
 # Penpot Mermaid plugin
 
 Turns Mermaid code into editable Penpot shapes.
-
 ## How it works
 
 1. The UI (iframe) renders the code with Mermaid, using SVG text labels and Source Sans Pro.
@@ -16,6 +15,10 @@ Turns Mermaid code into editable Penpot shapes.
    it in place.
 
 The plugin UI follows Penpot's light or dark theme.
+
+![Mermaid Plugin Screenshot - Dark Mode](/images/mermaid_plugin_1.png)
+
+![Mermaid Plugin Screenshot - Dark Mode](/images/mermaid_plugin_2.png)
 
 ## Develop
 
